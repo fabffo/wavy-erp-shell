@@ -1,0 +1,42 @@
+@if (context.loading()) {
+  <div class="splash"><div class="logo-mark">W</div><h1>Wavy ERP</h1><span class="spinner"></span><p>Chargement de votre espace…</p></div>
+} @else if (!context.authenticated()) {
+  <main class="login-page"><section class="login-card">
+    <div class="login-brand"><div class="logo-mark">W</div><div><strong>Wavy</strong><small>ERP</small></div></div>
+    <p class="eyebrow">ESPACE SÉCURISÉ</p><h1>Heureux de vous revoir</h1><p class="muted">Connectez-vous pour accéder à tous vos modules Wavy.</p>
+    <form (ngSubmit)="login()"><label>Adresse email<input type="email" name="email" [(ngModel)]="email" autocomplete="username" required placeholder="vous@entreprise.fr"></label><label>Mot de passe<input type="password" name="password" [(ngModel)]="password" autocomplete="current-password" required></label>
+      @if (context.authError()) { <p class="form-error" role="alert">{{ context.authError() }}</p> }<button class="primary" type="submit">Se connecter</button>
+    </form>
+  </section><aside class="login-visual"><div><p class="eyebrow">UN SEUL ESPACE</p><h2>Pilotez toute votre activité.</h2><p>Tiers, contrats, factures et trésorerie réunis dans une expérience cohérente.</p></div></aside></main>
+} @else {
+  <div class="erp" [class.compact]="!menuOpen()"><aside class="sidebar">
+    <button class="brand" (click)="dashboard()"><b>W</b><strong>Wavy</strong><small>ERP</small></button><nav><button class="home" [class.active]="!frame()" (click)="dashboard()">⌂ <span>Tableau de bord</span></button>
+      @for (group of visibleGroups(); track group.label) { <section><h3>{{ group.icon }} {{ group.label }}</h3>@for (entry of group.entries; track entry.label) { <button (click)="open(entry)">{{ entry.label }}</button> }</section> }
+    </nav><button class="collapse" (click)="menuOpen.set(!menuOpen())">{{ menuOpen() ? '‹ Réduire' : '›' }}</button>
+  </aside><main><header>
+    <form class="search" (ngSubmit)="search()">⌕ <input name="search" autocomplete="off" placeholder="Rechercher un tiers, contrat, facture…" [ngModel]="query()" (ngModelChange)="onQueryChange($event)"></form>
+    <div class="actions"><label><small>Société courante</small><select [value]="context.value().societeInterneId ?? ''" (change)="setCompany($any($event.target).value)">@if (!context.companies().length) { <option value="">{{ context.value().societeNom }}</option> }@for (company of context.companies(); track company.id) { <option [value]="company.id">{{ company.nom }}</option> }</select></label>
+      <button class="bell" aria-label="Notifications" (click)="profileOpen.set(false); notificationsOpen.set(!notificationsOpen())">♢@if (notifications().length) { <em>{{ notifications().length }}</em> }</button><button class="profile" (click)="notificationsOpen.set(false); profileOpen.set(!profileOpen())"><i>{{ (context.value().nom || 'U')[0] }}</i><span><b>{{ context.value().nom }}</b><small>{{ context.value().email }}</small></span></button>
+    </div>
+    @if (query().length > 1) { <div class="popover searchpop"><b>Résultats pour « {{ query() }} »</b>@if (searchLoading()) { <p>Recherche en cours…</p> } @else { @for (result of searchResults(); track result.type + result.path) { <button class="result" type="button" (click)="openSearchResult(result)"><small>{{ result.type }}</small><strong>{{ result.label }}</strong>@if (result.detail) { <span>{{ result.detail }}</span> }</button> } @empty { <p>Aucun résultat dans les modules disponibles.</p> } }</div> }
+    @if (notificationsOpen()) { <div class="popover"><b>Notifications</b>@for (item of notifications(); track item.label) { <button class="notification" type="button" (click)="openNotification(item)"><em [class]="item.level">{{ item.count }}</em><span>{{ item.label }}</span></button> } @empty { <p>Aucune alerte à traiter.</p> }</div> }
+    @if (profileOpen()) { <div class="popover profilepop"><b>{{ context.value().email }}</b><small>{{ context.value().roles.join(', ') }}</small><button (click)="logout()">Se déconnecter</button></div> }
+  </header><div class="crumb">@if (frame()) { <button class="back" type="button" (click)="back()">← Retour</button> }<button (click)="dashboard()">Wavy ERP</button>@for (crumb of breadcrumbs(); track $index) { <span>›</span><b>{{ crumb.label }}</b> }</div><div class="content">
+    @if (context.authError()) { <p class="form-error" role="alert">{{ context.authError() }}</p> }
+    @if (frame()) { <iframe title="Module Wavy" [src]="frame()" (load)="context.broadcast('WAVY_CONTEXT_CHANGED')"></iframe> } @else {
+      <div class="welcome"><small>VUE D’ENSEMBLE</small><h1>Bonjour {{ context.value().nom }} 👋</h1><p>Voici l’activité de votre entreprise aujourd’hui.</p>@if (context.value().readOnly) { <p class="readonly-notice">Mode lecture seule</p> }@if (accessDenied()) { <p class="form-error" role="alert">{{ accessDenied() }}</p> }</div>
+      @if (dashboardLoading() && !dashboardData()) { <p class="dashboard-loading">Chargement des indicateurs…</p> }
+      @if (dashboardData(); as data) { <div class="kpis">
+        <button (click)="open({label:'Dashboard financier',module:'factures',path:'/dashboard-financier'})"><span>Chiffre d’affaires</span><b>{{ money(data.chiffreAffaires) }}</b><small>Ce mois-ci</small></button>
+        <button (click)="open({label:'Dashboard financier',module:'factures',path:'/dashboard-financier'})"><span>Marge nette</span><b>{{ money(data.margeNette) }}</b><small>Ce mois-ci</small></button>
+        <button (click)="open({label:'Trésorerie',module:'tresorerie',path:'/tresorerie?vue=dashboard'})"><span>Trésorerie</span><b>{{ money(data.tresorerie) }}</b><small>Solde consolidé</small></button>
+        <button (click)="open({label:'À encaisser',module:'tresorerie',path:'/tresorerie?vue=factures-echeances&vueEcheances=A_ENCAISSER'})"><span>À encaisser</span><b>{{ money(data.aEncaisser) }}</b><small>Échéances clients</small></button>
+        <button (click)="open({label:'À payer',module:'tresorerie',path:'/tresorerie?vue=factures-echeances&vueEcheances=A_PAYER'})"><span>À payer</span><b>{{ money(data.aPayer) }}</b><small>Échéances fournisseurs</small></button>
+        <button (click)="open({label:'Rapprochements',module:'tresorerie',path:'/tresorerie?vue=rapprochements'})"><span>À rapprocher</span><b>{{ data.rapprochementsAValider ?? '—' }}</b><small>Opérations bancaires</small></button>
+        <button (click)="open({label:'Contrats',module:'contrats',path:'/contrats'})"><span>Contrats actifs</span><b>{{ data.contratsActifs ?? '—' }}</b><small>Tous contrats</small></button>
+        <button (click)="notificationsOpen.set(true)"><span>Alertes</span><b>{{ data.alertes }}</b><small>Éléments à traiter</small></button>
+      </div> }
+      <div class="panels"><article><h2>Accès rapides</h2><button (click)="open({label:'Nouvelle facture',module:'factures',path:'/factures/ventes/nouveau'})">＋ Nouvelle facture</button><button (click)="open({label:'Nouveau tiers',module:'tiers',path:'/tiers/nouveau'})">＋ Nouveau tiers</button><button (click)="open({label:'Rapprocher',module:'tresorerie',path:'/tresorerie?vue=rapprochements'})">⇄ Rapprocher</button></article><article><h2>À traiter</h2>@for (item of notifications(); track item.label) { <button class="task" type="button" (click)="openNotification(item)"><b>{{ item.count }}</b> {{ item.label }}</button> } @empty { <p>Aucune alerte à traiter.</p> }</article></div>
+    }
+  </div></main></div>
+}
