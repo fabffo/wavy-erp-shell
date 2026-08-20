@@ -25,8 +25,8 @@ URL recette Docker : `http://localhost:24207`.
 
 - Toutes les APIs passent par `/api/**`, routé vers `wavy-gateway`.
 - Les fronts sont servis sous `/modules/{socle,tiers,contrats,factures,tresorerie}/**`.
-- La session Basic reste dans `sessionStorage`, jamais dans `localStorage`.
-- Le contexte non sensible est restauré depuis `wavy.erp.context.v1`.
+- La session serveur utilise le cookie HTTP avec `withCredentials: true` sur `/api/auth/session`.
+- Le contexte non sensible est restauré depuis `wavy.erp.context.v1` et ne fait pas autorité pour l’authentification.
 - Les iframes reçoivent les événements `WAVY_CONTEXT_CHANGED`, `SOCIETE_CHANGED` et `WAVY_SESSION_CLOSED` par `postMessage` same-origin.
 - Un module peut demander le contexte avec `WAVY_CONTEXT_REQUEST` ou demander une navigation avec `WAVY_NAVIGATE`.
 

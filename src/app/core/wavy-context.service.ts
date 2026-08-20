@@ -30,10 +30,11 @@ export class WavyContextService {
   readonly value = signal<WavyContext>(this.restoreContext());
   readonly companies = signal<WavyCompany[]>([]);
   readonly loading = signal(true);
+  readonly sessionValidated = signal(false);
   readonly authError = signal('');
   readonly authenticated = computed(() => {
     const context = this.value();
-    return context.utilisateurId !== null && context.tenantId !== null && context.societeInterneId !== null;
+    return this.sessionValidated() && context.utilisateurId !== null && context.tenantId !== null && context.societeInterneId !== null;
   });
 
   hasRole(role: string): boolean {
@@ -79,7 +80,7 @@ export class WavyContextService {
   }
 
   logout(): void {
-    this.http.delete('/api/auth/session').pipe(catchError(() => of(null))).subscribe();
+    this.http.delete('/api/auth/session', { withCredentials: true }).pipe(catchError(() => of(null))).subscribe();
     this.clearSession(); this.broadcast('WAVY_SESSION_CLOSED');
   }
 
@@ -126,6 +127,7 @@ export class WavyContextService {
       map((profile) => this.normalizeProfile(profile)),
       tap(({ context, companies }) => {
         this.companies.set(companies); this.value.set(context); this.persistContext();
+        this.sessionValidated.set(true);
         this.syncEmbeddedModuleContexts();
       }),
     );
@@ -144,7 +146,7 @@ export class WavyContextService {
     const stored = this.value();
     const allowedStoredCompany = companies.find((company) => company.id === stored.societeInterneId);
     const profileCompany = companies.find((company) => company.id === profile.societeCouranteId);
-    const companyId = allowedStoredCompany?.id ?? profileCompany?.id ?? companies[0].id;
+    const companyId = profileCompany?.id ?? allowedStoredCompany?.id ?? companies[0].id;
     const company = companies.find((item) => item.id === companyId);
     const email = profile.email ?? stored.email;
     const fullName = [profile.prenom, profile.nom].filter((part) => part?.trim()).join(' ');
@@ -189,6 +191,7 @@ export class WavyContextService {
 
   private clearSession(): void {
     this.value.set({ ...EMPTY_CONTEXT }); this.companies.set([]);
+    this.sessionValidated.set(false);
     try {
       localStorage.removeItem(this.contextKey); localStorage.removeItem('wavy.factures.profil');
     } catch { /* L'état mémoire reste la source de vérité. */ }

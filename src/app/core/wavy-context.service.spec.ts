@@ -19,8 +19,10 @@ describe('WavyContextService', () => {
   afterEach(() => http.verify());
 
   it('partage le profil et le changement de société avec le module Factures', () => {
-    service.login('admin@wavy.fr', 'secret').subscribe();
-    http.expectOne('/api/auth/login').flush({ email: 'admin@wavy.fr', roles: ['ADMIN_TENANT'] });
+    service.login('admin@wavy.fr', '').subscribe();
+    const login = http.expectOne('/api/auth/session');
+    expect(login.request.withCredentials).toBe(true);
+    login.flush({ email: 'admin@wavy.fr', roles: ['ADMIN_TENANT'] });
     http.expectOne('/api/profil').flush({
       utilisateurId: 7,
       email: 'admin@wavy.fr',
@@ -40,6 +42,20 @@ describe('WavyContextService', () => {
     });
 
     service.selectCompany(11);
+    const companyRequest = http.expectOne('/api/auth/session/societe');
+    expect(companyRequest.request.withCredentials).toBe(true);
+    companyRequest.flush({
+      utilisateurId: 7,
+      email: 'admin@wavy.fr',
+      nom: 'Admin Wavy',
+      roles: ['ADMIN_TENANT'],
+      permissions: ['FACTURES_LECTURE'],
+      tenantId: 2,
+      tenantNom: 'Wavy',
+      societeCouranteId: 11,
+      societeCouranteNom: 'Wavy Conseil',
+      societesAutorisees: [{ id: 10, nom: 'Wavy Services' }, { id: 11, nom: 'Wavy Conseil' }],
+    });
     expect(JSON.parse(localStorage.getItem('wavy.factures.profil') ?? '{}')).toMatchObject({
       societeCouranteId: 11,
       societeCouranteNom: 'Wavy Conseil',
@@ -49,7 +65,10 @@ describe('WavyContextService', () => {
   it('supprime le profil partagé à la déconnexion', () => {
     localStorage.setItem('wavy.factures.profil', '{}');
     service.logout();
-    http.expectOne('/api/auth/session').flush(null);
+    const logout = http.expectOne('/api/auth/session');
+    expect(logout.request.method).toBe('DELETE');
+    expect(logout.request.withCredentials).toBe(true);
+    logout.flush(null);
     expect(localStorage.getItem('wavy.factures.profil')).toBeNull();
   });
 
@@ -61,6 +80,12 @@ describe('WavyContextService', () => {
     expect(service.canAccessModule('socle')).toBe(false);
   });
 
+  it('ne considère pas le contexte local comme une session authentifiée', () => {
+    service.update({ utilisateurId: 7, tenantId: 2, societeInterneId: 10 });
+
+    expect(service.authenticated()).toBe(false);
+  });
+
   it('autorise la consultation métier mais pas l’administration en lecture seule', () => {
     service.update({ roles: ['LECTURE_SEULE'], readOnly: true });
     expect(service.canAccessModule('tiers')).toBe(true);
@@ -70,8 +95,10 @@ describe('WavyContextService', () => {
   });
 
   it('autorise un utilisateur actif par son tenant et sa société sans rôle ERP dédié', () => {
-    service.login('gestionnaire@wavy.fr', 'secret').subscribe();
-    http.expectOne('/api/auth/login').flush({ email: 'gestionnaire@wavy.fr', roles: ['GESTIONNAIRE'] });
+    service.login('gestionnaire@wavy.fr', '').subscribe();
+    const login = http.expectOne('/api/auth/session');
+    expect(login.request.withCredentials).toBe(true);
+    login.flush({ email: 'gestionnaire@wavy.fr', roles: ['GESTIONNAIRE'] });
     http.expectOne('/api/profil').flush({
       utilisateurId: 21,
       email: 'gestionnaire@wavy.fr',
@@ -89,8 +116,10 @@ describe('WavyContextService', () => {
   });
 
   it('refuse un utilisateur qui ne possède aucune société autorisée', () => {
-    service.login('sans-societe@wavy.fr', 'secret').subscribe({ error: () => undefined });
-    http.expectOne('/api/auth/login').flush({ email: 'sans-societe@wavy.fr', roles: ['GESTIONNAIRE'] });
+    service.login('sans-societe@wavy.fr', '').subscribe({ error: () => undefined });
+    const login = http.expectOne('/api/auth/session');
+    expect(login.request.withCredentials).toBe(true);
+    login.flush({ email: 'sans-societe@wavy.fr', roles: ['GESTIONNAIRE'] });
     http.expectOne('/api/profil').flush({
       utilisateurId: 22,
       email: 'sans-societe@wavy.fr',
@@ -105,8 +134,10 @@ describe('WavyContextService', () => {
   });
 
   it('refuse un utilisateur sans tenant', () => {
-    service.login('sans-tenant@wavy.fr', 'secret').subscribe({ error: () => undefined });
-    http.expectOne('/api/auth/login').flush({ email: 'sans-tenant@wavy.fr', roles: ['GESTIONNAIRE'] });
+    service.login('sans-tenant@wavy.fr', '').subscribe({ error: () => undefined });
+    const login = http.expectOne('/api/auth/session');
+    expect(login.request.withCredentials).toBe(true);
+    login.flush({ email: 'sans-tenant@wavy.fr', roles: ['GESTIONNAIRE'] });
     http.expectOne('/api/profil').flush({
       utilisateurId: 23,
       email: 'sans-tenant@wavy.fr',
