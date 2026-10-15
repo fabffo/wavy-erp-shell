@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
+import { PwaIntegrationService } from './core/pwa-integration.service';
 import { App } from './app';
 import { routes } from './app.routes';
 import { WavyContextService } from './core/wavy-context.service';
@@ -17,6 +18,7 @@ describe('Navigation Shell', () => {
     loading.set(false); authenticated.set(true);
     value.set({ ...value(), societeInterneId: 3 });
     await TestBed.configureTestingModule({ imports: [App], providers: [provideRouter(routes),
+      { provide: PwaIntegrationService, useValue: { enabled: signal(false) } },
       { provide: WavyContextService, useValue: context },
       { provide: WavyGlobalDataService, useValue: { notifications: () => of([]), dashboard: () => of(dashboard) } }],
     }).compileComponents();
@@ -77,4 +79,20 @@ describe('Navigation Shell', () => {
     await vi.waitFor(() => { expect(app.frame()).toBeTruthy(); expect(app.frame()).not.toBe(frame); });
     expect(router.parseUrl(router.url).queryParams['path']).toBe('/contrats?type=CLIENT');
   });
+  it('garde la PWA invisible tant que la release entière n’est pas activée', async () => {
+    const fixture=TestBed.createComponent(App);fixture.detectChanges();await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('a[href^="/pwa/"]')).toBeNull();
+  });
+  it('propose le menu et le raccourci PWA pour les rôles autorisés après activation', async () => {
+    const fixture=TestBed.createComponent(App);
+    TestBed.inject(PwaIntegrationService).enabled.set(true);fixture.detectChanges();await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('nav a[href="/pwa/notes-frais"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('a[href="/pwa/notes-frais/nouveau"]')).toBeTruthy();
+    const role=vi.spyOn(context,'hasRole').mockReturnValue(false);
+    // Le contrôle est réévalué avec le contexte et le commutateur de livraison.
+    TestBed.inject(PwaIntegrationService).enabled.set(false);fixture.detectChanges();
+    TestBed.inject(PwaIntegrationService).enabled.set(true);fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href^="/pwa/"]')).toBeNull();role.mockRestore();
+  });
+
 });

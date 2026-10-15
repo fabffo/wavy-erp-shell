@@ -7,5 +7,6 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY nginx-pwa-disabled.conf /etc/nginx/pwa-route.conf
 COPY --from=build /workspace/dist/wavy-erp-shell/browser /usr/share/nginx/html
 EXPOSE 80

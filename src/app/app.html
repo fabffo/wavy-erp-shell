@@ -12,6 +12,7 @@
   <div class="erp" [class.compact]="!menuOpen()"><aside class="sidebar">
     <button class="brand" (click)="dashboard()"><b>W</b><strong>Wavy</strong><small>ERP</small></button><nav><button class="home" [class.active]="!frame()" (click)="dashboard()">⌂ <span>Tableau de bord</span></button>
       @for (group of visibleGroups(); track group.label) { <section><h3>{{ group.icon }} {{ group.label }}</h3>@for (entry of group.entries; track entry.label) { <button (click)="open(entry)">{{ entry.label }}</button> }</section> }
+      @if (pwaAccessible()) { <section><h3>Mobile</h3><a href="/pwa/notes-frais">Wavy PWA</a></section> }
     </nav><button class="collapse" (click)="menuOpen.set(!menuOpen())">{{ menuOpen() ? '‹ Réduire' : '›' }}</button>
   </aside><main><header>
     <form class="search" (ngSubmit)="search()">⌕ <input name="search" autocomplete="off" placeholder="Rechercher un tiers, contrat, facture…" [ngModel]="query()" (ngModelChange)="onQueryChange($event)"></form>
@@ -36,7 +37,7 @@
         <button (click)="open({label:'Contrats actifs',module:'contrats',path:'/contrats?statut=ACTIF'})"><span>Contrats actifs</span><b>{{ data.contratsActifs ?? '—' }}</b><small>Tous contrats</small></button>
         <button (click)="notificationsOpen.set(true)"><span>Alertes</span><b>{{ data.alertes }}</b><small>Éléments à traiter</small></button>
       </div> }
-      <div class="panels"><article><h2>Accès rapides</h2><button (click)="open({label:'Nouvelle facture',module:'factures',path:'/factures/ventes/nouveau'})">＋ Nouvelle facture</button><button (click)="open({label:'Nouveau tiers',module:'tiers',path:'/tiers/nouveau'})">＋ Nouveau tiers</button><button (click)="open({label:'Rapprocher',module:'tresorerie',path:'/tresorerie?vue=rapprochements'})">⇄ Rapprocher</button></article><article><h2>À traiter</h2>@for (item of notifications(); track item.label) { <button class="task" type="button" (click)="openNotification(item)"><b>{{ item.count }}</b> {{ item.label }}</button> } @empty { <p>Aucune alerte à traiter.</p> }</article></div>
+      <div class="panels"><article><h2>Accès rapides</h2>@if (pwaAccessible()) { <a href="/pwa/notes-frais/nouveau">Wavy PWA — photographier un justificatif</a> }<button (click)="open({label:'Nouvelle facture',module:'factures',path:'/factures/ventes/nouveau'})">＋ Nouvelle facture</button><button (click)="open({label:'Nouveau tiers',module:'tiers',path:'/tiers/nouveau'})">＋ Nouveau tiers</button><button (click)="open({label:'Rapprocher',module:'tresorerie',path:'/tresorerie?vue=rapprochements'})">⇄ Rapprocher</button></article><article><h2>À traiter</h2>@for (item of notifications(); track item.label) { <button class="task" type="button" (click)="openNotification(item)"><b>{{ item.count }}</b> {{ item.label }}</button> } @empty { <p>Aucune alerte à traiter.</p> }</article></div>
     }
   </div></main></div>
 }

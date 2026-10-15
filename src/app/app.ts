@@ -3,6 +3,7 @@ import { Component, HostListener, computed, effect, inject, signal, untracked } 
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
+import { PwaIntegrationService } from './core/pwa-integration.service';
 import { WavyContextService } from './core/wavy-context.service';
 import { ErpDashboard, GlobalNotification, GlobalSearchResult, WavyGlobalDataService } from './core/wavy-global-data.service';
 
@@ -13,6 +14,8 @@ type Breadcrumb = { label: string };
 @Component({ selector: 'app-root', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './app.html', styleUrl: './app.scss' })
 export class App {
   readonly context = inject(WavyContextService);
+  readonly pwa = inject(PwaIntegrationService);
+  readonly pwaAccessible = computed(() => this.pwa.enabled() && ['NOTE_DE_FRAIS', 'SUPER_NOTE_DE_FRAIS'].some(role => this.context.hasRole(role)));
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly sanitizer = inject(DomSanitizer);
