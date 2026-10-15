@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -24,15 +24,16 @@ export class App {
   readonly notifications = signal<GlobalNotification[]>([]);
   readonly accessDenied = signal('');
   readonly dashboardData = signal<ErpDashboard | null>(null); readonly dashboardLoading = signal(false);
+  private pendingEntry: Entry | null = null;
   private currentModule = ''; private currentPath = '';
   private searchTimer?: ReturnType<typeof setTimeout>; private notificationContext = '';
   email = ''; password = '';
 
   readonly groups: Group[] = [
-    { label: 'Tiers', icon: '◎', module: 'tiers', entries: [['Tous les tiers', '/tiers'], ['Clients', '/tiers/role/CLIENT'], ['Fournisseurs', '/tiers/role/FOURNISSEUR_GENERAL'], ['Salariés', '/tiers/role/SALARIE'], ['Contacts', '/contacts']].map(([label, path]) => ({ label, module: 'tiers', path })) },
+    { label: 'Tiers', icon: '◎', module: 'tiers', entries: [['Tous les tiers', '/tiers'], ['Clients', '/tiers/role/CLIENT'], ['Fournisseurs', '/tiers/role/fournisseur'], ['Salariés', '/tiers/role/SALARIE'], ['Contacts', '/tiers/role/contact']].map(([label, path]) => ({ label, module: 'tiers', path })) },
     { label: 'Contrats', icon: '▣', module: 'contrats', entries: [['Tous les contrats', '/contrats'], ['Contrats clients', '/contrats?type=CLIENT'], ['Contrats fournisseurs', '/contrats?type=FOURNISSEUR'], ['Références contractuelles', '/references']].map(([label, path]) => ({ label, module: 'contrats', path })) },
     { label: 'Factures', icon: '▤', module: 'factures', entries: [['Dashboard financier', '/dashboard-financier'], ['Factures de vente', '/factures/ventes'], ["Factures d’achat", '/factures/achats'], ['Salaires', '/salaires'], ['Notes de frais', '/notes-frais'], ['Extraction IA', '/factures/achats?mode=extraction']].map(([label, path]) => ({ label, module: 'factures', path })) },
-    { label: 'Trésorerie', icon: '◫', module: 'tresorerie', entries: [['Tableau de bord', 'dashboard'], ['Comptes bancaires', 'comptes'], ['Import relevés', 'import'], ['Opérations bancaires', 'operations'], ['Rapprochement bancaire', 'rapprochement'], ['Pièces de rapprochement', 'pieces-rapprochement'], ['Factures échéances', 'factures-echeances'], ['Balance âgée', 'balance-agee'], ['Prévisionnel', 'previsionnel']].map(([label, view]) => ({ label, module: 'tresorerie', path: `/tresorerie?vue=${view}` })) },
+    { label: 'Trésorerie', icon: '◫', module: 'tresorerie', entries: [['Tableau de bord', 'dashboard'], ['Comptes bancaires', 'comptes'], ['Import relevés', 'import'], ['Opérations bancaires', 'operations'], ['Rapprochement bancaire', 'rapprochements'], ['Pièces de rapprochement', 'pieces-rapprochement'], ['Factures échéances', 'factures-echeances'], ['Balance âgée', 'balance-agee'], ['Prévisionnel', 'previsionnel']].map(([label, view]) => ({ label, module: 'tresorerie', path: `/tresorerie?vue=${view}` })) },
     { label: 'Administration', icon: '⚙', module: 'socle', roles: ['ADMIN_TENANT', 'ADMIN_PLATEFORME'], entries: [['Tenant', '/tenants'], ['Sociétés', '/contexte'], ['Utilisateurs', '/utilisateurs'], ['Paramètres', '/parametres'], ['Compteurs', '/compteurs']].map(([label, path]) => ({ label, module: 'socle', path })) },
   ];
   readonly visibleGroups = computed(() => this.groups.filter((group) => this.context.canAccessModule(group.module) && (!group.roles || group.roles.some((role) => this.context.hasRole(role)))));
@@ -42,6 +43,10 @@ export class App {
     this.route.queryParamMap.subscribe((params) => {
       const module = params.get('module'); const path = params.get('path');
       if (module && path) this.setFrame(module, path, params.get('label') ?? module);
+      else {
+        this.pendingEntry = null; this.currentModule = ''; this.currentPath = ''; this.frame.set(null);
+        this.currentLabel.set('Tableau de bord'); this.breadcrumbs.set([{ label: 'Tableau de bord' }]);
+      }
     });
     window.addEventListener('message', (event) => this.context.receive(event));
     window.addEventListener('wavy:navigate', ((event: CustomEvent) => {
@@ -55,12 +60,26 @@ export class App {
         void this.router.navigate(['/connexion'], { queryParams: { returnUrl: this.router.url } });
         return;
       }
-      const signature = `${context.utilisateurId ?? ''}:${context.societeInterneId ?? ''}`;
+      if (!this.context.loading() && this.context.authenticated() && this.pendingEntry) {
+        const entry = this.pendingEntry; this.pendingEntry = null;
+        untracked(() => this.setFrame(entry.module, entry.path, entry.label));
+      }
+      const signature = `${context.tenantId ?? ''}:${context.utilisateurId ?? ''}:${context.societeInterneId ?? ''}`;
       if (!this.context.authenticated() || signature === this.notificationContext) return;
+      const previousContext = this.notificationContext;
       this.notificationContext = signature;
-      this.globalData.notifications().subscribe((items) => this.notifications.set(items));
+      this.notifications.set([]); this.dashboardData.set(null); this.searchResults.set([]);
+      if (previousContext && this.currentModule) {
+        const module = this.currentModule; const path = this.currentPath;
+        const label = untracked(() => this.currentLabel());
+        this.currentModule = ''; this.frame.set(null);
+        setTimeout(() => {
+          if (this.notificationContext === signature && !this.currentModule) this.setFrame(module, path, label);
+        }, 0);
+      }
+      this.globalData.notifications().subscribe((items) => { if (this.notificationContext === signature) this.notifications.set(items); });
       this.dashboardLoading.set(true);
-      this.globalData.dashboard().subscribe((data) => { this.dashboardData.set(data); this.dashboardLoading.set(false); });
+      this.globalData.dashboard().subscribe((data) => { if (this.notificationContext !== signature) return; this.dashboardData.set(data); this.dashboardLoading.set(false); });
     });
   }
 
@@ -90,8 +109,12 @@ export class App {
   }
   search(): void {
     const value = this.query().trim(); if (value.length < 2) return;
+    const signature = this.notificationContext;
     this.searchLoading.set(true);
-    this.globalData.search(value).subscribe((results) => { this.searchResults.set(results); this.searchLoading.set(false); });
+    this.globalData.search(value).subscribe((results) => {
+      if (signature !== this.notificationContext || value !== this.query().trim()) return;
+      this.searchResults.set(results); this.searchLoading.set(false);
+    });
   }
   openSearchResult(result: GlobalSearchResult): void { this.query.set(''); this.searchResults.set([]); this.open({ label: result.label, module: result.module, path: result.path }); }
   openNotification(item: GlobalNotification): void { this.notificationsOpen.set(false); this.open({ label: item.label, module: item.module, path: item.path }); }
@@ -99,6 +122,7 @@ export class App {
   closePopovers(): void { this.notificationsOpen.set(false); this.profileOpen.set(false); }
   @HostListener('document:keydown.escape') escape(): void { this.closePopovers(); }
   private setFrame(module: string, path: string, label: string): void {
+    if (this.context.loading()) { this.pendingEntry = { module, path, label }; return; }
     if (!this.context.canAccessModule(module)) { this.accessDenied.set(`Accès au module ${module} non autorisé.`); this.dashboard(); return; }
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     if (module !== this.currentModule || normalizedPath !== this.currentPath) {
