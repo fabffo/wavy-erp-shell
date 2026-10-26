@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+// Les routes simulées doivent intercepter les API ; le SW réel est testé en HTTPS séparément.
+test.use({serviceWorkers:'block'});
 // APIs simulées : navigation réelle, aucun accès aux environnements et aucune base métier.
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX9sAAAAASUVORK5CYII=', 'base64');
 function pdf(): Buffer {
@@ -34,7 +36,10 @@ test(`ERP → PWA → société → import ${format}/IA → note → consultatio
     return route.fulfill({status:503,json:{message:'Fixture non disponible'}});
   });
   await page.goto('/dashboard');
-  await page.locator('nav a', {hasText:'Wavy PWA'}).click();await expect(page).toHaveURL(/\/pwa\/notes-frais$/);
+  await page.locator('nav').getByRole('button',{name:'Mobile PWA',exact:true}).click();
+  await expect(page).toHaveURL(/module=pwa/);
+  await expect(page.locator('iframe[title="Module Wavy"]')).toHaveAttribute('src','/pwa/notes-frais');
+  await expect(page.frameLocator('iframe[title="Module Wavy"]').locator('h1')).toBeVisible();
   await page.goto('/pwa/profil');await page.getByLabel('Société courante').selectOption({ label: 'Société B' });await expect(page).toHaveURL(/\/pwa\/notes-frais$/);expect(societe).toBe(4);
   await page.goto('/pwa/notes-frais/nouveau');
   await page.locator(format==='png'?'input[capture]':'input[type=file]:not([capture])').setInputFiles({name,mimeType:mime,buffer:original});
@@ -58,6 +63,15 @@ test('URL directe mobile sous /pwa et session expirée',async({page})=>{
 });
 
 test('une ancienne session ne rétablit pas la société précédente lors du retour au premier plan', async ({page}) => {
+  // Le test pilote les retours au premier plan ; les événements natifs du navigateur
+  // ne doivent pas ajouter une lecture de session entre ses deux rendez-vous.
+  await page.addInitScript(() => {
+    for (const type of ['focus', 'pageshow']) {
+      window.addEventListener(type, event => {
+        if (event.isTrusted) event.stopImmediatePropagation();
+      }, { capture: true });
+    }
+  });
   let company=2; let hold=false;
   const pending: import('@playwright/test').Route[]=[];
   const profile=(id:number)=>({utilisateurId:3,tenantId:1,societeCouranteId:id,email:'test@example.test',nom:'Test',societesAutorisees:[{id:2,nom:'A'},{id:4,nom:'B'}],roles:['NOTE_DE_FRAIS']});
@@ -69,6 +83,8 @@ test('une ancienne session ne rétablit pas la société précédente lors du re
     return route.fulfill({json:[]});
   });
   await page.goto('/pwa/notes-frais');
+  await expect(page.locator('main h1')).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('wavy-pwa-contexte')!).societeCouranteId)).toBe(2);
   hold=true;
   await page.getByRole('link',{name:'Profil',exact:true}).last().click();
   await expect.poll(()=>pending.length).toBe(1);

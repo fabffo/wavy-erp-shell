@@ -45,6 +45,7 @@ export class WavyContextService {
   canAccessModule(module: string): boolean {
     const roles = this.value().roles.map((role) => role.replace(/^ROLE_/, '').toUpperCase());
     if (roles.includes('ADMIN_PLATEFORME') || roles.includes('ADMIN_TENANT')) return true;
+    if (module === 'pwa') return roles.some(role => ['NOTE_DE_FRAIS', 'SUPER_NOTE_DE_FRAIS'].includes(role));
     if (module === 'socle') return false;
     const known = roles.some((role) => ['GESTIONNAIRE', 'COMPTABLE', 'LECTURE', 'LECTURE_SEULE'].includes(role));
     if (!known) return true;
@@ -110,6 +111,8 @@ export class WavyContextService {
 
   receive(event: MessageEvent): void {
     if (event.origin !== location.origin || !event.data?.type) return;
+    if (event.data.type === 'WAVY_SESSION_CHANGED' && Array.from(document.querySelectorAll('iframe')).some(frame => frame.contentWindow === event.source))
+      this.getSession().pipe(switchMap(() => this.loadProfile())).subscribe({ error: () => this.clearSession() });
     if (event.data.type === 'WAVY_CONTEXT_REQUEST') this.broadcast('WAVY_CONTEXT_CHANGED');
     if (event.data.type === 'WAVY_NAVIGATE' && typeof event.data.path === 'string')
       window.dispatchEvent(new CustomEvent('wavy:navigate', { detail: event.data }));

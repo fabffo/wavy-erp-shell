@@ -18,7 +18,7 @@ describe('Navigation Shell', () => {
     loading.set(false); authenticated.set(true);
     value.set({ ...value(), societeInterneId: 3 });
     await TestBed.configureTestingModule({ imports: [App], providers: [provideRouter(routes),
-      { provide: PwaIntegrationService, useValue: { enabled: signal(false) } },
+      { provide: PwaIntegrationService, useValue: { enabled: signal(false), loading: signal(false) } },
       { provide: WavyContextService, useValue: context },
       { provide: WavyGlobalDataService, useValue: { notifications: () => of([]), dashboard: () => of(dashboard) } }],
     }).compileComponents();
@@ -79,20 +79,33 @@ describe('Navigation Shell', () => {
     await vi.waitFor(() => { expect(app.frame()).toBeTruthy(); expect(app.frame()).not.toBe(frame); });
     expect(router.parseUrl(router.url).queryParams['path']).toBe('/contrats?type=CLIENT');
   });
-  it('garde la PWA invisible tant que la release entière n’est pas activée', async () => {
+  it('garde le menu Mobile PWA invisible tant que le module est désactivé', async () => {
     const fixture=TestBed.createComponent(App);fixture.detectChanges();await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('a[href^="/pwa/"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Mobile PWA');
   });
-  it('propose le menu et le raccourci PWA pour les rôles autorisés après activation', async () => {
-    const fixture=TestBed.createComponent(App);
-    TestBed.inject(PwaIntegrationService).enabled.set(true);fixture.detectChanges();await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('nav a[href="/pwa/notes-frais"]')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('a[href="/pwa/notes-frais/nouveau"]')).toBeTruthy();
-    const role=vi.spyOn(context,'hasRole').mockReturnValue(false);
-    // Le contrôle est réévalué avec le contexte et le commutateur de livraison.
-    TestBed.inject(PwaIntegrationService).enabled.set(false);fixture.detectChanges();
-    TestBed.inject(PwaIntegrationService).enabled.set(true);fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('a[href^="/pwa/"]')).toBeNull();role.mockRestore();
+  it('ouvre Mobile PWA dans le même iframe depuis le menu et le tableau de bord', async () => {
+    const fixture=TestBed.createComponent(App); TestBed.inject(PwaIntegrationService).enabled.set(true);
+    fixture.detectChanges();await fixture.whenStable();
+    const buttons=Array.from(fixture.nativeElement.querySelectorAll('button')).filter((b:any)=>b.textContent.trim()==='Mobile PWA') as HTMLButtonElement[];
+    expect(buttons).toHaveLength(2);
+    for(const selector of ['nav','.panels']){
+      const button=Array.from(fixture.nativeElement.querySelectorAll(selector+' button')).find((b:any)=>b.textContent.trim()==='Mobile PWA') as HTMLButtonElement;
+      button.click();await fixture.whenStable();
+      expect(TestBed.inject(Router).url).toContain('module=pwa');
+      expect(fixture.nativeElement.querySelector('iframe').getAttribute('src')).toBe('/pwa/notes-frais');
+      fixture.componentInstance.dashboard();await fixture.whenStable();}
   });
-
+  it('restaure une URL PWA directe après chargement de sa disponibilité', async () => {
+    const pwa=TestBed.inject(PwaIntegrationService);pwa.loading.set(true);
+    const router=TestBed.inject(Router);await router.navigate(['/module'],{queryParams:{module:'pwa',path:'/profil'}});
+    const fixture=TestBed.createComponent(App);fixture.detectChanges();expect(fixture.componentInstance.frame()).toBeNull();
+    pwa.enabled.set(true);pwa.loading.set(false);fixture.detectChanges();await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('iframe').getAttribute('src')).toBe('/pwa/profil');
+  });
+  it('refuse une URL PWA directe sans droits ou quand le module est fermé', async () => {
+    const fixture=TestBed.createComponent(App);const app=fixture.componentInstance;
+    app.open({module:'pwa',path:'/notes-frais',label:'Mobile PWA'});await fixture.whenStable();expect(app.frame()).toBeNull();
+    const role=vi.spyOn(context,'hasRole').mockReturnValue(false);TestBed.inject(PwaIntegrationService).enabled.set(true);
+    app.open({module:'pwa',path:'/notes-frais',label:'Mobile PWA'});await fixture.whenStable();expect(app.frame()).toBeNull();role.mockRestore();
+  });
 });

@@ -63,7 +63,7 @@ export class App {
         void this.router.navigate(['/connexion'], { queryParams: { returnUrl: this.router.url } });
         return;
       }
-      if (!this.context.loading() && this.context.authenticated() && this.pendingEntry) {
+      if (!this.context.loading() && this.context.authenticated() && !this.pwa.loading() && this.pendingEntry) {
         const entry = this.pendingEntry; this.pendingEntry = null;
         untracked(() => this.setFrame(entry.module, entry.path, entry.label));
       }
@@ -99,7 +99,7 @@ export class App {
   open(entry: Entry): void {
     this.closePopovers();
     this.context.authError.set('');
-    if (!this.context.canAccessModule(entry.module)) { this.accessDenied.set(`Vous n’avez pas accès au module ${entry.label}.`); this.dashboard(); return; }
+    if (!this.context.canAccessModule(entry.module) || (entry.module === 'pwa' && !this.pwaAccessible())) { this.accessDenied.set(`Vous n’avez pas accès au module ${entry.label}.`); this.dashboard(); return; }
     this.accessDenied.set(''); this.router.navigate(['/module'], { queryParams: entry });
   }
   dashboard(): void { this.frame.set(null); this.currentModule = ''; this.currentPath = ''; this.currentLabel.set('Tableau de bord'); this.breadcrumbs.set([{ label: 'Tableau de bord' }]); this.router.navigate(['/dashboard']); }
@@ -125,12 +125,14 @@ export class App {
   closePopovers(): void { this.notificationsOpen.set(false); this.profileOpen.set(false); }
   @HostListener('document:keydown.escape') escape(): void { this.closePopovers(); }
   private setFrame(module: string, path: string, label: string): void {
-    if (this.context.loading()) { this.pendingEntry = { module, path, label }; return; }
-    if (!this.context.canAccessModule(module)) { this.accessDenied.set(`Accès au module ${module} non autorisé.`); this.dashboard(); return; }
+    if (this.context.loading() || (module === 'pwa' && this.pwa.loading())) { this.pendingEntry = { module, path, label }; return; }
+    if (!this.context.canAccessModule(module) || (module === 'pwa' && !this.pwaAccessible())) { this.accessDenied.set(`Accès au module ${module} non autorisé.`); this.dashboard(); return; }
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     if (module !== this.currentModule || normalizedPath !== this.currentPath) {
       this.currentModule = module; this.currentPath = normalizedPath;
-      this.frame.set(this.sanitizer.bypassSecurityTrustResourceUrl(`/modules/${module}${normalizedPath}`));
+      const url = module === 'pwa' ? `/pwa${normalizedPath}` : `/modules/${module}${normalizedPath}`;
+      if (module === 'pwa' && !new URL(url, location.origin).pathname.startsWith('/pwa/')) { this.dashboard(); return; }
+      this.frame.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
     }
     this.currentLabel.set(label); this.breadcrumbs.set(this.buildBreadcrumbs(module, normalizedPath, label));
   }
@@ -145,7 +147,7 @@ export class App {
   }
 
   private buildBreadcrumbs(module: string, path: string, label: string): Breadcrumb[] {
-    const moduleLabels: Record<string, string> = { socle: 'Administration', tiers: 'Tiers', contrats: 'Contrats', factures: 'Factures', tresorerie: 'Trésorerie' };
+    const moduleLabels: Record<string, string> = { pwa: 'Mobile PWA', socle: 'Administration', tiers: 'Tiers', contrats: 'Contrats', factures: 'Factures', tresorerie: 'Trésorerie' };
     const crumbs: Breadcrumb[] = [{ label: moduleLabels[module] ?? module }];
     const routeLabel = this.routeLabel(path);
     if (routeLabel !== crumbs[0].label) crumbs.push({ label: routeLabel });
